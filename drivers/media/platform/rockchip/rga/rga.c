@@ -350,18 +350,47 @@ static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 {
 	struct v4l2_pix_format_mplane *pix_fmt = &f->fmt.pix_mp;
-	struct rockchip_rga *rga = video_drvdata(file);
+	struct rga_ctx *ctx = file_to_rga_ctx(file);
+	struct rockchip_rga *rga = ctx->rga;
 	const struct rga_hw *hw = rga->hw;
 	struct rga_fmt *fmt;
+	u32 min_width = hw->min_width;
+	u32 max_width = hw->max_width;
+	u32 min_height = hw->min_height;
+	u32 max_height = hw->max_height;
 
 	fmt = rga_fmt_find(rga, pix_fmt->pixelformat);
 	if (!fmt)
 		fmt = &hw->formats[0];
 
-	pix_fmt->width = clamp(pix_fmt->width,
-			       hw->min_width, hw->max_width);
-	pix_fmt->height = clamp(pix_fmt->height,
-				hw->min_height, hw->max_height);
+	if (V4L2_TYPE_IS_OUTPUT(f->type) &&
+	    v4l2_m2m_get_dst_vq(ctx->fh.m2m_ctx)->streaming) {
+		min_width =
+			MAX(min_width, DIV_ROUND_UP(ctx->out.pix.width,
+						    hw->max_scaling_factor));
+		max_width = MIN(max_width,
+				ctx->out.pix.width * hw->max_scaling_factor);
+		min_height =
+			MAX(min_height, DIV_ROUND_UP(ctx->out.pix.height,
+						     hw->max_scaling_factor));
+		max_height = MIN(max_height,
+				 ctx->out.pix.height * hw->max_scaling_factor);
+	} else if (V4L2_TYPE_IS_CAPTURE(f->type) &&
+		   v4l2_m2m_get_src_vq(ctx->fh.m2m_ctx)->streaming) {
+		min_width =
+			MAX(min_width, DIV_ROUND_UP(ctx->in.pix.width,
+						    hw->max_scaling_factor));
+		max_width = MIN(max_width,
+				ctx->in.pix.width * hw->max_scaling_factor);
+		min_height =
+			MAX(min_height, DIV_ROUND_UP(ctx->in.pix.height,
+						     hw->max_scaling_factor));
+		max_height = MIN(max_height,
+				 ctx->in.pix.height * hw->max_scaling_factor);
+	}
+
+	pix_fmt->width = clamp(pix_fmt->width, min_width, max_width);
+	pix_fmt->height = clamp(pix_fmt->height, min_height, max_height);
 
 	v4l2_fill_pixfmt_mp_aligned(pix_fmt, pix_fmt->pixelformat,
 				    pix_fmt->width, pix_fmt->height, hw->stride_alignment);
@@ -527,11 +556,32 @@ static int vidioc_s_selection(struct file *file, void *priv,
 	return ret;
 }
 
+static bool check_scaling(const struct rga_hw *hw, u32 src_size, u32 dst_size)
+{
+	if (src_size < dst_size)
+		return src_size * hw->max_scaling_factor >= dst_size;
+	else
+		return dst_size * hw->max_scaling_factor >= src_size;
+}
+
 static int vidioc_streamon(struct file *file, void *priv,
 			   enum v4l2_buf_type type)
 {
 	struct rga_ctx *ctx = file_to_rga_ctx(file);
 	const struct rga_hw *hw = ctx->rga->hw;
+
+	if ((V4L2_TYPE_IS_OUTPUT(type) &&
+	     v4l2_m2m_get_dst_vq(ctx->fh.m2m_ctx)->streaming) ||
+	    (V4L2_TYPE_IS_CAPTURE(type) &&
+	     v4l2_m2m_get_src_vq(ctx->fh.m2m_ctx)->streaming)) {
+		/*
+		 * As the other side is already streaming,
+		 * check that the max scaling factor isn't exceeded.
+		 */
+		if (!check_scaling(hw, ctx->in.pix.width, ctx->out.pix.width) ||
+		    !check_scaling(hw, ctx->in.pix.height, ctx->out.pix.height))
+			return -EINVAL;
+	}
 
 	hw->setup_cmdbuf(ctx);
 
