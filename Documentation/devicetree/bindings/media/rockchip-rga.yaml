@@ -9,7 +9,9 @@ title: Rockchip 2D raster graphic acceleration controller (RGA)
 description:
   RGA is a standalone 2D raster graphic acceleration unit. It accelerates 2D
   graphics operations, such as point/line drawing, image scaling, rotation,
-  BitBLT, alpha blending and image blur/sharpness.
+  BitBLT, alpha blending and image blur/sharpness. There exist two variants
+  named RGA2 and RGA3 that differ in the supported inputs/output formats,
+  the attached IOMMU and the supported operations on the input.
 
 maintainers:
   - Jacob Chen <jacob-chen@iotwrt.com>
@@ -20,6 +22,7 @@ properties:
     oneOf:
       - const: rockchip,rk3288-rga
       - const: rockchip,rk3399-rga
+      - const: rockchip,rk3588-rga3
       - items:
           - enum:
               - rockchip,rk3228-rga
@@ -45,6 +48,9 @@ properties:
   power-domains:
     maxItems: 1
 
+  iommus:
+    maxItems: 1
+
   resets:
     maxItems: 3
 
@@ -53,6 +59,17 @@ properties:
       - const: core
       - const: axi
       - const: ahb
+
+allOf:
+- if:
+    properties:
+      compatible:
+        contains:
+          enum:
+            - rockchip,rk3588-rga3
+  then:
+    required:
+      - iommus
 
 required:
   - compatible
