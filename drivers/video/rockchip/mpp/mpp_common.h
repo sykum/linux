@@ -63,26 +63,31 @@
  * Device type: classified by hardware feature
  */
 enum MPP_DEVICE_TYPE {
-	MPP_DEVICE_VDPU1	= 0, /* 0x00000001 */
-	MPP_DEVICE_VDPU2	= 1, /* 0x00000002 */
-	MPP_DEVICE_VDPU1_PP	= 2, /* 0x00000004 */
-	MPP_DEVICE_VDPU2_PP	= 3, /* 0x00000008 */
-	MPP_DEVICE_AV1DEC	= 4, /* 0x00000010 */
-
-	MPP_DEVICE_HEVC_DEC	= 8, /* 0x00000100 */
-	MPP_DEVICE_RKVDEC	= 9, /* 0x00000200 */
-	MPP_DEVICE_AVSPLUS_DEC	= 12, /* 0x00001000 */
-	MPP_DEVICE_RKJPEGD	= 13, /* 0x00002000 */
-
-	MPP_DEVICE_RKVENC	= 16, /* 0x00010000 */
-	MPP_DEVICE_VEPU1	= 17, /* 0x00020000 */
-	MPP_DEVICE_VEPU2	= 18, /* 0x00040000 */
-	MPP_DEVICE_VEPU2_JPEG	= 19, /* 0x00080000 */
-	MPP_DEVICE_VEPU22	= 24, /* 0x01000000 */
-
-	MPP_DEVICE_IEP2		= 28, /* 0x10000000 */
-	MPP_DEVICE_VDPP		= 29, /* 0x20000000 */
-	MPP_DEVICE_BUTT,
+    MPP_DEVICE_VDPU1          = 0,
+    MPP_DEVICE_VDPU2          = 1,
+    MPP_DEVICE_VDPU1_PP       = 2,
+    MPP_DEVICE_VDPU2_PP       = 3,
+    MPP_DEVICE_AV1DEC         = 4,
+    
+    /* Die HEVC/RKVDEC Reihe */
+    MPP_DEVICE_HEVC_DEC       = 8,
+    MPP_DEVICE_RKVDEC         = 9,   /* Der alte Core (RK3399/356x) */
+    
+    /* RK3588 spezifische Cores */
+    MPP_DEVICE_RKVDEC2        = 12,  /* Das ist dein rkvdec2_0 */
+    MPP_DEVICE_RKVDEC2_LITE   = 13,  /* Das ist dein rkvdec2_1 (falls vorhanden) */
+    
+    /* Encoder Sektion */
+    MPP_DEVICE_RKVENC         = 16,
+    MPP_DEVICE_VEPU1          = 17,
+    MPP_DEVICE_VEPU2          = 18,
+    MPP_DEVICE_VEPU2_JPEG     = 19,
+    MPP_DEVICE_VEPU22         = 24,
+    
+    /* Post-Processing & Sonstiges */
+    MPP_DEVICE_IEP2           = 28,
+    MPP_DEVICE_VDPP           = 29,
+    MPP_DEVICE_BUTT,
 };
 
 /**

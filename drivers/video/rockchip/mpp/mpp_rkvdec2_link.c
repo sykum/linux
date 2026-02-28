@@ -1206,8 +1206,8 @@ int rkvdec2_attach_ccu(struct device *dev, struct rkvdec2_dev *dec)
 	ccu = platform_get_drvdata(pdev);
 	if (!ccu)
 	{
-		dev_err(dev, "RETURN NOMEM\n");
-		return -ENOMEM;
+        dev_info(dev, "CCU not ready yet, deferring probe...\n");
+        return -EPROBE_DEFER;
 	}
 
 	ret = of_property_read_u32(dev->of_node, "rockchip,core-mask", &dec->core_mask);

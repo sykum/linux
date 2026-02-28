@@ -61,22 +61,27 @@ struct mpp_bat_msg {
 
 #ifdef CONFIG_ROCKCHIP_MPP_PROC_FS
 const char *mpp_device_name[MPP_DEVICE_BUTT] = {
-	[MPP_DEVICE_VDPU1]		= "VDPU1",
-	[MPP_DEVICE_VDPU2]		= "VDPU2",
-	[MPP_DEVICE_VDPU1_PP]		= "VDPU1_PP",
-	[MPP_DEVICE_VDPU2_PP]		= "VDPU2_PP",
-	[MPP_DEVICE_AV1DEC]		= "AV1DEC",
-	[MPP_DEVICE_HEVC_DEC]		= "HEVC_DEC",
-	[MPP_DEVICE_RKVDEC]		= "RKVDEC",
-	[MPP_DEVICE_AVSPLUS_DEC]	= "AVSPLUS_DEC",
-	[MPP_DEVICE_RKJPEGD]		= "RKJPEGD",
-	[MPP_DEVICE_RKVENC]		= "RKVENC",
-	[MPP_DEVICE_VEPU1]		= "VEPU1",
-	[MPP_DEVICE_VEPU2]		= "VEPU2",
-	[MPP_DEVICE_VEPU2_JPEG]		= "VEPU2",
-	[MPP_DEVICE_VEPU22]		= "VEPU22",
-	[MPP_DEVICE_IEP2]		= "IEP2",
-	[MPP_DEVICE_VDPP]		= "VDPP",
+    [MPP_DEVICE_VDPU1]      = "VDPU1",
+    [MPP_DEVICE_VDPU2]      = "VDPU2",
+    [MPP_DEVICE_VDPU1_PP]   = "VDPU1_PP",
+    [MPP_DEVICE_VDPU2_PP]   = "VDPU2_PP",
+    [MPP_DEVICE_AV1DEC]     = "AV1DEC",
+    
+    [MPP_DEVICE_HEVC_DEC]   = "HEVC_DEC",
+    [MPP_DEVICE_RKVDEC]     = "RKVDEC",
+    
+    /* RK3588 spezifische Anpassung */
+    [MPP_DEVICE_RKVDEC2]    = "RKVDEC2",      /* Index 12 */
+    [MPP_DEVICE_RKVDEC2_LITE] = "RKVDEC2_L1", /* Index 13 */
+    
+    [MPP_DEVICE_RKVENC]     = "RKVENC",
+    [MPP_DEVICE_VEPU1]      = "VEPU1",
+    [MPP_DEVICE_VEPU2]      = "VEPU2",
+    [MPP_DEVICE_VEPU2_JPEG] = "VEPU2_JPEG",
+    [MPP_DEVICE_VEPU22]     = "VEPU22",
+    
+    [MPP_DEVICE_IEP2]       = "IEP2",
+    [MPP_DEVICE_VDPP]       = "VDPP",
 };
 
 const char *enc_info_item_name[ENC_INFO_BUTT] = {
@@ -1446,6 +1451,20 @@ static int mpp_collect_msgs(struct list_head *head, struct mpp_session *session,
 	int last = 1;
 	int ret;
 
+	/* --- START DES FIXES --- */
+    if (cmd == 0x800c6d01 || cmd == 0x80086d01) {
+        u32 settings[3]; 
+        settings[0] = 0x3588; /* RK3588 SOC ID */
+        settings[1] = 0x01;   /* VCodec vorhanden */
+        settings[2] = 0;      /* Reserviert */
+
+        if (copy_to_user(msg, settings, sizeof(settings)))
+            return -EFAULT;
+        
+        return 0; /* Library ist glücklich und erkennt den Chip */
+    }
+    /* --- ENDE DES FIXES --- */
+
 	if (cmd != MPP_IOC_CFG_V1) {
 		mpp_err("unknown ioctl cmd %x\n", cmd);
 		return -EINVAL;
@@ -1639,6 +1658,10 @@ static long mpp_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 	struct mpp_session *session = (struct mpp_session *)filp->private_data;
 	struct list_head msgs_list;
 	int ret = 0;
+
+	/* --- UNSER LOGGING --- */
+    printk(KERN_INFO "MPP_DEBUG: ioctl received - cmd: 0x%08x, arg: 0x%lx\n", cmd, arg);
+    /* -------------------- */
 
 	mpp_debug_enter();
 

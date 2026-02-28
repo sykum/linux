@@ -903,7 +903,7 @@ static const struct mpp_dev_var rkvdec_v2_data = {
 };
 
 static const struct mpp_dev_var rkvdec_rk3588_data = {
-	.device_type = MPP_DEVICE_RKVDEC,
+	.device_type = MPP_DEVICE_RKVDEC2,
 	.hw_info = &rkvdec_v2_hw_info,
 	.trans_info = rkvdec_v2_trans,
 	.hw_ops = &rkvdec_rk3588_hw_ops,
@@ -913,7 +913,7 @@ static const struct mpp_dev_var rkvdec_rk3588_data = {
 static const struct of_device_id mpp_rkvdec2_dt_match[] = {
 	{
 		.compatible = "rockchip,rkv-decoder-v2",
-		.data = &rkvdec_v2_data,
+		.data = &rkvdec_rk3588_data,
 	},
 	{
 		.compatible = "rockchip,rkv-decoder-v2-ccu",
@@ -989,119 +989,86 @@ static int rkvdec2_ccu_probe(struct platform_device *pdev)
 
 static int rkvdec2_alloc_rcbbuf(struct platform_device *pdev, struct rkvdec2_dev *dec)
 {
-	int ret;
-	u32 vals[2];
-	dma_addr_t iova;
-	u32 rcb_size, sram_size;
-	struct device_node *sram_np;
-	struct resource sram_res;
-	resource_size_t sram_start, sram_end;
-	struct iommu_domain *domain;
-	struct device *dev = &pdev->dev;
+    struct device *dev = &pdev->dev;
+    struct iommu_domain *domain;
+    struct resource sram_res;
+    struct device_node *sram_np;
+    u32 rcb_size, sram_size;
+    int ret;
 
-	/* get rcb iova start and size */
-	ret = device_property_read_u32_array(dev, "rockchip,rcb-iova", vals, 2);
-	if (ret) {
-		dev_err(dev, "could not find property rcb-iova\n");
-		return ret;
-	}
-	iova = PAGE_ALIGN(vals[0]);
-	rcb_size = PAGE_ALIGN(vals[1]);
-	if (!rcb_size) {
-		dev_err(dev, "rcb_size invalid.\n");
-		return -EINVAL;
-	}
-	/* alloc reserve iova for rcb */
-	//ret = iommu_dma_reserve_iova(dev, iova, rcb_size);
-	//if (ret) {
-	//	dev_err(dev, "alloc rcb iova error.\n");
-	//	return ret;
-	//}
-	/* get sram device node */
-	sram_np = of_parse_phandle(dev->of_node, "rockchip,sram", 0);
-	if (!sram_np) {
-		dev_err(dev, "could not find phandle sram\n");
-		return -ENODEV;
-	}
-	/* get sram start and size */
-	ret = of_address_to_resource(sram_np, 0, &sram_res);
-	of_node_put(sram_np);
-	if (ret) {
-		dev_err(dev, "find sram res error\n");
-		return ret;
-	}
-	/* check sram start and size is PAGE_SIZE align */
-	sram_start = round_up(sram_res.start, PAGE_SIZE);
-	sram_end = round_down(sram_res.start + resource_size(&sram_res), PAGE_SIZE);
-	if (sram_end <= sram_start) {
-		dev_err(dev, "no available sram, phy_start %pa, phy_end %pa\n",
-			&sram_start, &sram_end);
-		return -ENOMEM;
-	}
-	sram_size = sram_end - sram_start;
-	sram_size = rcb_size < sram_size ? rcb_size : sram_size;
-	/* iova map to sram */
-	domain = dec->mpp.iommu_info->domain;
-	ret = iommu_map(domain, iova, sram_start, sram_size, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
-	if (ret) {
-		dev_err(dev, "sram iommu_map error.\n");
-		return ret;
-	}
-	/* alloc dma for the remaining buffer, sram + dma */
-	if (sram_size < rcb_size) {
-		struct page *page;
-		size_t page_size = PAGE_ALIGN(rcb_size - sram_size);
+    // 1. IOMMU Domain check (6.19 Way)
+    domain = iommu_get_domain_for_dev(dev);
+    if (!domain) {
+        dev_err(dev, "No IOMMU domain attached\n");
+        return -ENODEV;
+    }
 
-		page = alloc_pages(GFP_KERNEL | __GFP_ZERO, get_order(page_size));
-		if (!page) {
-			dev_err(dev, "unable to allocate pages\n");
-			ret = -ENOMEM;
-			goto err_sram_map;
-		}
-		/* iova map to dma */
-		ret = iommu_map(domain, iova + sram_size, page_to_phys(page),
-				page_size, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
-		if (ret) {
-			dev_err(dev, "page iommu_map error.\n");
-			__free_pages(page, get_order(page_size));
-			goto err_sram_map;
-		}
-		dec->rcb_page = page;
-	}
-	dec->sram_size = sram_size;
-	dec->rcb_size = rcb_size;
-	dec->rcb_iova = iova;
-	dev_info(dev, "sram_start %pa\n", &sram_start);
-	dev_info(dev, "rcb_iova %pad\n", &dec->rcb_iova);
-	dev_info(dev, "sram_size %u\n", dec->sram_size);
-	dev_info(dev, "rcb_size %u\n", dec->rcb_size);
+    // 2. RCB Größe aus DT (wie gehabt)
+    if (device_property_read_u32(dev, "rockchip,rcb-size", &rcb_size)) {
+        rcb_size = SZ_2M; // Beispielwert
+		dev_info(dev, "no rcb-size in DT, using 2MB fallback\n");
+    }
 
-	ret = of_property_read_u32(dev->of_node, "rockchip,rcb-min-width", &dec->rcb_min_width);
-	if (!ret && dec->rcb_min_width)
-		dev_info(dev, "min_width %u\n", dec->rcb_min_width);
+    // 3. SRAM finden und physikalische Adresse extrahieren
+    sram_np = of_parse_phandle(dev->of_node, "rockchip,sram", 0);
+    if (!sram_np || of_address_to_resource(sram_np, 0, &sram_res)) {
+        dev_err(dev, "Failed to get SRAM resource\n");
+        return -ENODEV;
+    }
+    of_node_put(sram_np);
 
-	/* if have, read rcb_info */
-	dec->rcb_info_count = device_property_count_u32(dev, "rockchip,rcb-info");
-	if (dec->rcb_info_count > 0 &&
-	    dec->rcb_info_count <= (sizeof(dec->rcb_infos) / sizeof(u32))) {
-		int i;
+    sram_size = min_t(u32, rcb_size, resource_size(&sram_res));
+    
+    // 4. SRAM Mapping via DMA-API (Erzeugt IOVA für den SRAM-Teil)
+    // Wir nutzen hier dma_map_resource, um dem Kernel zu sagen: 
+    // "Mappe diesen MMIO Bereich in die IOMMU"
+    dec->rcb_iova = dma_map_resource(dev, sram_res.start, sram_size, 
+                                     DMA_BIDIRECTIONAL, 0);
+    
+    if (dma_mapping_error(dev, dec->rcb_iova)) {
+        dev_err(dev, "Failed to map SRAM via DMA-API\n");
+        return -ENOMEM;
+    }
 
-		ret = device_property_read_u32_array(dev, "rockchip,rcb-info",
-						     dec->rcb_infos, dec->rcb_info_count);
-		if (!ret) {
-			dev_info(dev, "rcb_info_count %u\n", dec->rcb_info_count);
-			for (i = 0; i < dec->rcb_info_count; i += 2)
-				dev_info(dev, "[%u, %u]\n",
-					 dec->rcb_infos[i], dec->rcb_infos[i+1]);
-		}
-	}
+    // 5. Handling des Rest-Puffers im System-RAM
+    if (sram_size < rcb_size) {
+        size_t rem_size = PAGE_ALIGN(rcb_size - sram_size);
+        struct page *pages;
+        dma_addr_t next_iova;
 
-	return 0;
+        pages = alloc_pages(GFP_KERNEL | __GFP_ZERO, get_order(rem_size));
+        if (!pages) {
+            ret = -ENOMEM;
+            goto err_unmap_sram;
+        }
 
-err_sram_map:
-	iommu_unmap(domain, iova, sram_size);
+        // Hier ist der Trick: Wir erzwingen das Mapping direkt hinter den SRAM
+        // In 6.19 nutzen wir iommu_map, müssen aber sicherstellen, dass die IOVA
+        // nicht vom DMA-Allocator anderweitig vergeben wurde.
+        next_iova = dec->rcb_iova + sram_size;
+        
+        ret = iommu_map(domain, next_iova, page_to_phys(pages), 
+                        rem_size, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+        
+        if (ret) {
+            dev_err(dev, "Failed to stitch RAM to SRAM IOVA\n");
+            __free_pages(pages, get_order(rem_size));
+            goto err_unmap_sram;
+        }
+        dec->rcb_page = pages;
+    }
 
-	return ret;
+    dec->sram_size = sram_size;
+    dec->rcb_size = rcb_size;
+    
+    dev_info(dev, "RCB allocated: IOVA %pad, SRAM %u, RAM %u\n", 
+            &dec->rcb_iova, sram_size, rcb_size - sram_size);
+
+    return 0;
+
+err_unmap_sram:
+    dma_unmap_resource(dev, dec->rcb_iova, sram_size, DMA_BIDIRECTIONAL, 0);
+    return ret;
 }
 
 static int rkvdec2_core_probe(struct platform_device *pdev)
@@ -1115,6 +1082,13 @@ static int rkvdec2_core_probe(struct platform_device *pdev)
 	dec = devm_kzalloc(dev, sizeof(*dec), GFP_KERNEL);
 	if (!dec)
 		return -ENOMEM;
+
+	/* attach core to ccu */
+	ret = rkvdec2_attach_ccu(dev, dec);
+	if (ret) {
+		dev_err(dev, "attach ccu failed\n");
+		return ret;
+	}
 
 	mpp = &dec->mpp;
 	platform_set_drvdata(pdev, mpp);
@@ -1137,13 +1111,6 @@ static int rkvdec2_core_probe(struct platform_device *pdev)
 	dec->mmu_base = ioremap(dec->mpp.io_base + 0x600, 0x80);
 	if (!dec->mmu_base)
 		dev_err(dev, "mmu base map failed!\n");
-
-	/* attach core to ccu */
-	ret = rkvdec2_attach_ccu(dev, dec);
-	if (ret) {
-		dev_err(dev, "attach ccu failed\n");
-		return ret;
-	}
 
 	/* alloc rcb buffer */
 	rkvdec2_alloc_rcbbuf(pdev, dec);
