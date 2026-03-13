@@ -24,20 +24,14 @@
 #include <linux/poll.h>
 #include <linux/platform_device.h>
 #include <soc/rockchip/pm_domains.h>
+#include "rk-mpp.h"
 
 #define MHZ				(1000 * 1000)
 #define MPP_WORK_TIMEOUT_DELAY		(500)
 
 #define MPP_MAX_MSG_NUM			(16)
-#define MPP_MAX_REG_TRANS_NUM		(60)
+#define MPP_MAX_REG_TRANS_NUM		(80)
 #define MPP_MAX_TASK_CAPACITY		(16)
-/* define flags for mpp_request */
-#define MPP_FLAGS_MULTI_MSG		(0x00000001)
-#define MPP_FLAGS_LAST_MSG		(0x00000002)
-#define MPP_FLAGS_REG_FD_NO_TRANS	(0x00000004)
-#define MPP_FLAGS_SCL_FD_NO_TRANS	(0x00000008)
-#define MPP_FLAGS_REG_NO_OFFSET		(0x00000010)
-#define MPP_FLAGS_SECURE_MODE		(0x00010000)
 
 /* grf mask for get value */
 #define MPP_GRF_VAL_MASK		(0xFFFF)
@@ -63,31 +57,27 @@
  * Device type: classified by hardware feature
  */
 enum MPP_DEVICE_TYPE {
-    MPP_DEVICE_VDPU1          = 0,
-    MPP_DEVICE_VDPU2          = 1,
-    MPP_DEVICE_VDPU1_PP       = 2,
-    MPP_DEVICE_VDPU2_PP       = 3,
-    MPP_DEVICE_AV1DEC         = 4,
-    
-    /* Die HEVC/RKVDEC Reihe */
-    MPP_DEVICE_HEVC_DEC       = 8,
-    MPP_DEVICE_RKVDEC         = 9,   /* Der alte Core (RK3399/356x) */
-    
-    /* RK3588 spezifische Cores */
-    MPP_DEVICE_RKVDEC2        = 12,  /* Das ist dein rkvdec2_0 */
-    MPP_DEVICE_RKVDEC2_LITE   = 13,  /* Das ist dein rkvdec2_1 (falls vorhanden) */
-    
-    /* Encoder Sektion */
-    MPP_DEVICE_RKVENC         = 16,
-    MPP_DEVICE_VEPU1          = 17,
-    MPP_DEVICE_VEPU2          = 18,
-    MPP_DEVICE_VEPU2_JPEG     = 19,
-    MPP_DEVICE_VEPU22         = 24,
-    
-    /* Post-Processing & Sonstiges */
-    MPP_DEVICE_IEP2           = 28,
-    MPP_DEVICE_VDPP           = 29,
-    MPP_DEVICE_BUTT,
+	MPP_DEVICE_VDPU1	= 0, /* 0x00000001 */
+	MPP_DEVICE_VDPU2	= 1, /* 0x00000002 */
+	MPP_DEVICE_VDPU1_PP	= 2, /* 0x00000004 */
+	MPP_DEVICE_VDPU2_PP	= 3, /* 0x00000008 */
+	MPP_DEVICE_AV1DEC	= 4, /* 0x00000010 */
+
+	MPP_DEVICE_HEVC_DEC	= 8, /* 0x00000100 */
+	MPP_DEVICE_RKVDEC	= 9, /* 0x00000200 */
+	MPP_DEVICE_AVSPLUS_DEC	= 12, /* 0x00001000 */
+	MPP_DEVICE_RKJPEGD	= 13, /* 0x00002000 */
+
+	MPP_DEVICE_RKVENC	= 16, /* 0x00010000 */
+	MPP_DEVICE_VEPU1	= 17, /* 0x00020000 */
+	MPP_DEVICE_VEPU2	= 18, /* 0x00040000 */
+	MPP_DEVICE_VEPU2_JPEG	= 19, /* 0x00080000 */
+	MPP_DEVICE_RKJPEGE	= 20, /* 0x00100000 */
+	MPP_DEVICE_VEPU22	= 24, /* 0x01000000 */
+
+	MPP_DEVICE_IEP2		= 28, /* 0x10000000 */
+	MPP_DEVICE_VDPP		= 29, /* 0x20000000 */
+	MPP_DEVICE_BUTT,
 };
 
 /**
@@ -109,46 +99,8 @@ enum MPP_DRIVER_TYPE {
 	MPP_DRIVER_RKVENC2,
 	MPP_DRIVER_AV1DEC,
 	MPP_DRIVER_VDPP,
+	MPP_DRIVER_JPGENC,
 	MPP_DRIVER_BUTT,
-};
-
-/**
- * Command type: keep the same as user space
- */
-enum MPP_DEV_COMMAND_TYPE {
-	MPP_CMD_QUERY_BASE		= 0,
-	MPP_CMD_QUERY_HW_SUPPORT	= MPP_CMD_QUERY_BASE + 0,
-	MPP_CMD_QUERY_HW_ID		= MPP_CMD_QUERY_BASE + 1,
-	MPP_CMD_QUERY_CMD_SUPPORT	= MPP_CMD_QUERY_BASE + 2,
-	MPP_CMD_QUERY_BUTT,
-
-	MPP_CMD_INIT_BASE		= 0x100,
-	MPP_CMD_INIT_CLIENT_TYPE	= MPP_CMD_INIT_BASE + 0,
-	MPP_CMD_INIT_DRIVER_DATA	= MPP_CMD_INIT_BASE + 1,
-	MPP_CMD_INIT_TRANS_TABLE	= MPP_CMD_INIT_BASE + 2,
-	MPP_CMD_INIT_BUTT,
-
-	MPP_CMD_SEND_BASE		= 0x200,
-	MPP_CMD_SET_REG_WRITE		= MPP_CMD_SEND_BASE + 0,
-	MPP_CMD_SET_REG_READ		= MPP_CMD_SEND_BASE + 1,
-	MPP_CMD_SET_REG_ADDR_OFFSET	= MPP_CMD_SEND_BASE + 2,
-	MPP_CMD_SET_RCB_INFO		= MPP_CMD_SEND_BASE + 3,
-	MPP_CMD_SET_SESSION_FD		= MPP_CMD_SEND_BASE + 4,
-	MPP_CMD_SEND_BUTT,
-
-	MPP_CMD_POLL_BASE		= 0x300,
-	MPP_CMD_POLL_HW_FINISH		= MPP_CMD_POLL_BASE + 0,
-	MPP_CMD_POLL_HW_IRQ		= MPP_CMD_POLL_BASE + 1,
-	MPP_CMD_POLL_BUTT,
-
-	MPP_CMD_CONTROL_BASE		= 0x400,
-	MPP_CMD_RESET_SESSION		= MPP_CMD_CONTROL_BASE + 0,
-	MPP_CMD_TRANS_FD_TO_IOVA	= MPP_CMD_CONTROL_BASE + 1,
-	MPP_CMD_RELEASE_FD		= MPP_CMD_CONTROL_BASE + 2,
-	MPP_CMD_SEND_CODEC_INFO		= MPP_CMD_CONTROL_BASE + 3,
-	MPP_CMD_CONTROL_BUTT,
-
-	MPP_CMD_BUTT,
 };
 
 enum MPP_CLOCK_MODE {
@@ -214,15 +166,6 @@ struct mpp_dma_session;
 struct mpp_taskqueue;
 struct iommu_domain;
 
-/* data common struct for parse out */
-struct mpp_request {
-	__u32 cmd;
-	__u32 flags;
-	__u32 size;
-	__u32 offset;
-	void __user *data;
-};
-
 /* struct use to collect task set and poll message */
 struct mpp_task_msgs {
 	/* for ioctl msgs bat process */
@@ -268,7 +211,11 @@ struct mpp_hw_info {
 	u32 reg_end;
 	/* register of enable hardware */
 	int reg_en;
+	/* register of codec format */
+	int reg_fmt;
+	u32 reg_ret_status;
 	void *link_info;
+	u32 magic_base;
 };
 
 struct mpp_trans_info {
@@ -331,6 +278,15 @@ struct mpp_mem_region {
 	bool is_dup;
 };
 
+struct mpp_load_info {
+	s64 busy_time;
+	s64 hw_busy_time;
+	ktime_t load_time;
+	u32 load;
+	u32 load_frac;
+	u32 utilization;
+	u32 utilization_frac;
+};
 
 struct mpp_dev {
 	struct device *dev;
@@ -389,6 +345,8 @@ struct mpp_dev {
 	/* common per-device procfs */
 	u32 disable;
 	u32 timing_check;
+	u32 load_en;
+	struct mpp_load_info load_info;
 };
 
 struct mpp_session {
@@ -462,8 +420,7 @@ enum mpp_task_state {
 	TASK_TIMING_RUN_END	= 21,
 	TASK_TIMING_IRQ		= 22,
 	TASK_TIMING_TO_CANCEL	= 23,
-	TASK_TIMING_ISR		= 24,
-	TASK_TIMING_FINISH	= 25,
+	TASK_TIMING_FINISH	= 24,
 };
 
 /* The context for the a task */
@@ -502,7 +459,6 @@ struct mpp_task {
 	ktime_t on_run_end;
 	ktime_t on_irq;
 	ktime_t on_cancel_timeout;
-	ktime_t on_isr;
 	ktime_t on_finish;
 
 	/* hardware info for current task */
@@ -510,6 +466,7 @@ struct mpp_task {
 	u32 task_index;
 	u32 task_id;
 	u32 *reg;
+	u32 irq_status;
 	/* event for session wait thread */
 	wait_queue_head_t wait;
 
@@ -518,6 +475,7 @@ struct mpp_task {
 	s32 core_id;
 	/* hw cycles */
 	u32 hw_cycles;
+	u32 hw_time;
 };
 
 struct mpp_taskqueue {
@@ -563,7 +521,9 @@ struct mpp_taskqueue {
 	u32 core_id_max;
 	u32 core_count;
 	unsigned long dev_active_flags;
-	u32 iommu_fault;
+
+	/* for devices which share iommu, record last attach device */
+	struct mpp_iommu_info *last_iommu_info;
 };
 
 struct mpp_reset_group {
@@ -603,6 +563,10 @@ struct mpp_service {
 
 	/* global timing record flag */
 	u32 timing_en;
+	u32 load_interval;
+
+	/* bit mask for iommu shared */
+	u32 iommu_shared_mask;
 };
 
 /*
@@ -615,6 +579,7 @@ struct mpp_service {
  * @set_freq	Set freq to hardware.
  * @reduce_freq	Reduce freq when hardware is not running.
  * @reset	When error, reset hardware.
+ * @hack_run	Hack run for some soc
  */
 struct mpp_hw_ops {
 	int (*init)(struct mpp_dev *mpp);
@@ -628,6 +593,7 @@ struct mpp_hw_ops {
 	int (*reduce_freq)(struct mpp_dev *mpp);
 	int (*reset)(struct mpp_dev *mpp);
 	int (*set_grf)(struct mpp_dev *mpp);
+	int (*hack_run)(struct mpp_dev *mpp);
 };
 
 /*
@@ -670,6 +636,7 @@ struct mpp_dev_ops {
 	int (*free_session)(struct mpp_session *session);
 	int (*dump_session)(struct mpp_session *session, struct seq_file *seq);
 	int (*dump_dev)(struct mpp_dev *mpp);
+	int (*link_irq)(struct mpp_dev *mpp);
 };
 
 struct mpp_taskqueue *mpp_taskqueue_init(struct device *dev);
@@ -725,7 +692,6 @@ int mpp_power_off(struct mpp_dev *mpp);
 int mpp_dev_reset(struct mpp_dev *mpp);
 
 irqreturn_t mpp_dev_irq(int irq, void *param);
-irqreturn_t mpp_dev_isr_sched(int irq, void *param);
 
 struct reset_control *mpp_reset_control_get(struct mpp_dev *mpp,
 					    enum MPP_RESET_TYPE type,
@@ -755,6 +721,8 @@ unsigned long mpp_get_clk_info_rate_hz(struct mpp_clk_info *clk_info,
 				       enum MPP_CLOCK_MODE mode);
 int mpp_clk_set_rate(struct mpp_clk_info *clk_info,
 		     enum MPP_CLOCK_MODE mode);
+void mpp_dev_load(struct mpp_dev *mpp, struct mpp_task *mpp_task);
+void mpp_dev_load_clear(struct mpp_dev *mpp);
 
 static inline int mpp_write(struct mpp_dev *mpp, u32 reg, u32 val)
 {
@@ -918,11 +886,9 @@ extern struct platform_driver rockchip_jpgdec_driver;
 extern struct platform_driver rockchip_rkvdec2_driver;
 extern struct platform_driver rockchip_rkvenc2_driver;
 extern struct platform_driver rockchip_av1dec_driver;
-extern struct platform_driver rockchip_av1_iommu_driver;
-
-extern int av1dec_driver_register(struct platform_driver *drv);
-extern void av1dec_driver_unregister(struct platform_driver *drv);
-extern struct bus_type av1dec_bus;
+extern struct platform_driver rockchip_jpgenc_driver;
 extern struct platform_driver rockchip_vdpp_driver;
+
+extern const struct dev_pm_ops mpp_common_pm_ops;
 
 #endif

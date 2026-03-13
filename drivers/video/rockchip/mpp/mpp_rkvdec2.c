@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright (c) 2020 Rockchip Electronics Co., Ltd
+ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
  *
  * author:
  *	Alpha Lin, alpha.lin@rock-chips.com
@@ -8,7 +8,6 @@
  *
  */
 #include <linux/pm_runtime.h>
-#include <linux/delay.h>
 
 #include "mpp_debug.h"
 #include "mpp_common.h"
@@ -16,17 +15,28 @@
 
 #include "mpp_rkvdec2_link.h"
 
+// #include <soc/rockchip/rockchip_dmc.h>
+// #include <soc/rockchip/rockchip_opp_select.h>
+// #include <soc/rockchip/rockchip_system_monitor.h>
 // #include <soc/rockchip/rockchip_iommu.h>
+
+#ifdef CONFIG_PM_DEVFREQ
+#include <linux/pm_opp.h>     /* Für dev_pm_opp_find_freq_ceil, dev_pm_opp_set_rate */
+#include <linux/devfreq.h>    /* Für struct devfreq und devfreq_dev_status */
+// #include "../drivers/devfreq/governor.h"
+#endif
 
 /*
  * hardware information
  */
 static struct mpp_hw_info rkvdec_v2_hw_info = {
-	.reg_num = RKVDEC_REG_NUM,
-	.reg_id = RKVDEC_REG_HW_ID_INDEX,
-	.reg_start = RKVDEC_REG_START_INDEX,
-	.reg_end = RKVDEC_REG_END_INDEX,
-	.reg_en = RKVDEC_REG_START_EN_INDEX,
+	.reg_num = 279,
+	.reg_id = 0,
+	.reg_start = 0,
+	.reg_end = 278,
+	.reg_en = 10,
+	.reg_fmt = 9,
+	.reg_ret_status = 224,
 	.link_info = &rkvdec_link_v2_hw_info,
 };
 
@@ -79,11 +89,83 @@ static struct mpp_trans_info rkvdec_v2_trans[] = {
 	}
 };
 
+/*
+ * file handle translate information
+ */
+static const u16 trans_vdpu383_tbl_h265d[] = {
+	128, 129, 130, 131, 132, 133, 134, 140, 142, 144, 146, 148, 150, 152, 154,
+	156, 158, 160, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+	180, 181, 182, 183, 184, 185, 192, 194, 195, 196, 197, 198, 199, 200, 201,
+	202, 203, 204, 205, 206, 207, 208, 209, 210, 216, 217, 218, 219, 220, 221,
+	222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232
+};
+
+static const u16 trans_vdpu383_tbl_h264d[] = {
+	128, 129, 130, 131, 132, 133, 134, 140, 142, 144, 146, 148, 150, 152, 154,
+	156, 158, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180,
+	181, 182, 183, 184, 185, 192, 194, 195, 196, 197, 198, 199, 200, 201, 202,
+	203, 204, 205, 206, 207, 208, 209, 210, 216, 217, 218, 219, 220, 221, 222,
+	223, 224, 225, 226, 227, 228, 229, 230, 231, 232
+};
+
+static const u16 trans_vdpu383_tbl_vp9d[] = {
+	128, 129, 130, 131, 132, 133, 134, 140, 142, 144, 146, 148, 150, 152, 154,
+	156, 158, 160, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+	180, 181, 182, 183, 184, 185, 192, 194, 195, 196, 197, 198, 199, 200, 201,
+	202, 203, 204, 205, 206, 207, 208, 209, 210, 216, 217, 218, 219, 220, 221,
+	222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232
+};
+
+static const u16 trans_vdpu383_tbl_avs2d[] = {
+	128, 129, 130, 131, 132, 133, 134, 140, 142, 144, 146, 148, 150, 152, 154,
+	156, 158, 160, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+	180, 181, 182, 183, 184, 185, 192, 194, 195, 196, 197, 198, 199, 200, 201,
+	202, 203, 204, 205, 206, 207, 208, 209, 210, 216, 217, 218, 219, 220, 221,
+	222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232
+};
+
+static const u16 trans_vdpu383_tbl_av1d[] = {
+	128, 131, 133, 134, 140, 142, 144, 146, 148, 150, 152, 154,
+	156, 158, 160, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+	180, 181, 182, 183, 184, 185, 192, 194, 195, 196, 197, 198, 199, 200, 201,
+	202, 203, 204, 205, 206, 207, 208, 209, 210, 216, 217, 218, 219, 220, 221,
+	222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232
+};
+
+/*
+ * file handle translate information
+ */
+static const u16 trans_vdpu384a_tbl_h265d[] = {
+	/* 128-135 general in/out */
+	/* 140-160 rcb base */
+	/* 168-185 dpb base */
+	/* 192-210 payload */
+	/* 216-232 colmv */
+	128, 129, 130, 131, 132, 133, 134, 135, 140, 142, 144, 146, 148, 150, 152,
+	156, 158, 160, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+	180, 181, 182, 183, 184, 185, 192, 194, 195, 196, 197, 198, 199, 200, 201,
+	202, 203, 204, 205, 206, 207, 208, 209, 210, 216, 217, 218, 219, 220, 221,
+	222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232
+};
+
+static const u16 trans_vdpu384a_tbl_h264d[] = {
+	/* 128-135 general in/out */
+	/* 140-160 rcb base */
+	/* 168-185 dpb base */
+	/* 192-210 payload */
+	/* 216-232 colmv */
+	128, 129, 130, 131, 132, 133, 134, 135, 140, 142, 144, 146, 148, 150, 152,
+	156, 158, 160, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+	180, 181, 182, 183, 184, 185, 192, 194, 195, 196, 197, 198, 199, 200, 201,
+	202, 203, 204, 205, 206, 207, 208, 209, 210, 216, 217, 218, 219, 220, 221,
+	222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232
+};
+
 static int mpp_extract_rcb_info(struct rkvdec2_rcb_info *rcb_inf,
 				struct mpp_request *req)
 {
-	int max_size = ARRAY_SIZE(rcb_inf->elem);
-	int cnt = req->size / sizeof(rcb_inf->elem[0]);
+	u32 max_size = ARRAY_SIZE(rcb_inf->elem);
+	u32 cnt = req->size / sizeof(rcb_inf->elem[0]);
 
 	if (req->size > sizeof(rcb_inf->elem)) {
 		mpp_err("count %d,max_size %d\n", cnt, max_size);
@@ -129,8 +211,8 @@ static int rkvdec2_extract_task_msg(struct mpp_session *session,
 			memcpy(&task->w_reqs[task->w_req_cnt++], req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_READ: {
-			int req_base;
-			int max_size;
+			u32 req_base;
+			u32 max_size;
 
 			if (req->offset >= RKVDEC_PERF_SEL_OFFSET) {
 				req_base = RKVDEC_PERF_SEL_OFFSET;
@@ -174,7 +256,7 @@ int mpp_set_rcbbuf(struct mpp_dev *mpp, struct mpp_session *session,
 	mpp_debug_enter();
 
 	if (priv && dec->rcb_iova) {
-		int i;
+		u32 i;
 		u32 reg_idx, rcb_size, rcb_offset;
 		struct rkvdec2_rcb_info *rcb_inf = &priv->rcb_inf;
 		u32 width = priv->codec_info[DEC_INFO_WIDTH].val;
@@ -221,7 +303,8 @@ int rkvdec2_task_init(struct mpp_dev *mpp, struct mpp_session *session,
 
 	/* process fd in register */
 	if (!(msgs->flags & MPP_FLAGS_REG_FD_NO_TRANS)) {
-		u32 fmt = RKVDEC_GET_FORMAT(task->reg[RKVDEC_REG_FORMAT_INDEX]);
+		int reg_fmt = mpp_task->hw_info->reg_fmt;
+		u32 fmt = RKVDEC_GET_FORMAT(task->reg[reg_fmt]);
 
 		ret = mpp_translate_reg_address(session, mpp_task,
 						fmt, task->reg, &task->off_inf);
@@ -287,7 +370,7 @@ static int rkvdec2_run(struct mpp_dev *mpp, struct mpp_task *mpp_task)
 	/* set cache size */
 	u32 reg = RKVDEC_CACHE_PERMIT_CACHEABLE_ACCESS |
 		  RKVDEC_CACHE_PERMIT_READ_ALLOCATE;
-	int i;
+	u32 i;
 
 	mpp_debug_enter();
 
@@ -304,7 +387,7 @@ static int rkvdec2_run(struct mpp_dev *mpp, struct mpp_task *mpp_task)
 
 	/* set registers for hardware */
 	for (i = 0; i < task->w_req_cnt; i++) {
-		int s, e;
+		u32 s, e;
 		struct mpp_request *req = &task->w_reqs[i];
 
 		s = req->offset / sizeof(u32);
@@ -348,6 +431,7 @@ static int rkvdec2_isr(struct mpp_dev *mpp)
 	struct rkvdec2_task *task = NULL;
 	struct mpp_task *mpp_task = mpp->cur_task;
 	struct rkvdec2_dev *dec = to_rkvdec2_dev(mpp);
+	struct rkvdec_link_info *link_info = mpp->var->hw_info->link_info;
 
 	/* FIXME use a spin lock here */
 	if (!mpp_task) {
@@ -361,8 +445,7 @@ static int rkvdec2_isr(struct mpp_dev *mpp)
 	task->irq_status = mpp->irq_status;
 
 	mpp_debug(DEBUG_IRQ_STATUS, "irq_status: %08x\n", task->irq_status);
-	err_mask = RKVDEC_COLMV_REF_ERR_STA | RKVDEC_BUF_EMPTY_STA |
-		   RKVDEC_TIMEOUT_STA | RKVDEC_ERROR_STA;
+	err_mask = link_info->err_mask;
 	if (err_mask & task->irq_status) {
 		atomic_inc(&mpp->reset_request);
 		if (mpp_debug_unlikely(DEBUG_DUMP_ERR_REG)) {
@@ -410,6 +493,7 @@ static int rkvdec2_finish(struct mpp_dev *mpp, struct mpp_task *mpp_task)
 	u32 i;
 	u32 dec_get;
 	s32 dec_length;
+	u32 reg_ret_status;
 	struct rkvdec2_task *task = to_rkvdec2_task(mpp_task);
 	struct mpp_request *req;
 	u32 s, e;
@@ -421,7 +505,7 @@ static int rkvdec2_finish(struct mpp_dev *mpp, struct mpp_task *mpp_task)
 		req = &task->r_reqs[i];
 		/* read perf register */
 		if (req->offset >= RKVDEC_PERF_SEL_OFFSET) {
-			int off = req->offset - RKVDEC_PERF_SEL_OFFSET;
+			u32 off = req->offset - RKVDEC_PERF_SEL_OFFSET;
 
 			s = off / sizeof(u32);
 			e = s + req->size / sizeof(u32);
@@ -433,7 +517,9 @@ static int rkvdec2_finish(struct mpp_dev *mpp, struct mpp_task *mpp_task)
 		}
 	}
 	/* revert hack for irq status */
-	task->reg[RKVDEC_REG_INT_EN_INDEX] = task->irq_status;
+	reg_ret_status = mpp->var->hw_info->reg_ret_status;
+	task->reg[reg_ret_status] = task->irq_status;
+
 	/* revert hack for decoded length */
 	dec_get = mpp_read_relaxed(mpp, RKVDEC_REG_RLC_BASE);
 	dec_length = dec_get - task->strm_addr;
@@ -468,7 +554,7 @@ int rkvdec2_result(struct mpp_dev *mpp, struct mpp_task *mpp_task,
 		req = &task->r_reqs[i];
 
 		if (req->offset >= RKVDEC_PERF_SEL_OFFSET) {
-			int off = req->offset - RKVDEC_PERF_SEL_OFFSET;
+			u32 off = req->offset - RKVDEC_PERF_SEL_OFFSET;
 
 			if (copy_to_user(req->data,
 					 (u8 *)task->reg_sel + off,
@@ -503,8 +589,8 @@ static int rkvdec2_control(struct mpp_session *session, struct mpp_request *req)
 {
 	switch (req->cmd) {
 	case MPP_CMD_SEND_CODEC_INFO: {
-		int i;
-		int cnt;
+		u32 i;
+		u32 cnt;
 		struct codec_info_elem elem;
 		struct rkvdec2_session_priv *priv;
 
@@ -638,6 +724,131 @@ static inline int rkvdec2_procfs_init(struct mpp_dev *mpp)
 }
 #endif
 
+#ifdef CONFIG_PM_DEVFREQ
+static int rkvdec2_devfreq_target(struct device *dev,
+                                  unsigned long *freq, u32 flags)
+{
+    struct dev_pm_opp *opp;
+    unsigned long target_freq;
+    int ret;
+
+    /* 1. Finde das passende OPP (Operating Performance Point) */
+    opp = dev_pm_opp_find_freq_ceil(dev, freq);
+    if (IS_ERR(opp)) {
+        dev_err(dev, "Failed to find opp for %lu Hz\n", *freq);
+        return PTR_ERR(opp);
+    }
+    target_freq = dev_pm_opp_get_freq(opp);
+    dev_pm_opp_put(opp);
+
+    /* 2. Die "Magie": Der Kernel setzt Takt UND Spannung in der richtigen Reihenfolge */
+    ret = dev_pm_opp_set_rate(dev, target_freq);
+    if (ret) {
+        dev_err(dev, "Failed to set rate to %lu Hz: %d\n", target_freq, ret);
+        return ret;
+    }
+
+    /* 3. Status für devfreq aktualisieren */
+    if (dev_get_drvdata(dev)) {
+        struct mpp_dev *mpp = dev_get_drvdata(dev);
+        struct rkvdec2_dev *dec = to_rkvdec2_dev(mpp);
+        dec->core_last_rate_hz = target_freq;
+    }
+
+    return 0;
+}
+
+static int rkvdec2_devfreq_get_dev_status(struct device *dev,
+					  struct devfreq_dev_status *stat)
+{
+	return 0;
+}
+
+static int rkvdec2_devfreq_get_cur_freq(struct device *dev,
+					unsigned long *freq)
+{
+	struct mpp_dev *mpp = dev_get_drvdata(dev);
+	struct rkvdec2_dev *dec = to_rkvdec2_dev(mpp);
+
+	*freq = dec->core_last_rate_hz;
+
+	return 0;
+}
+
+static struct devfreq_dev_profile rkvdec2_devfreq_profile = {
+	.target	= rkvdec2_devfreq_target,
+	.get_dev_status	= rkvdec2_devfreq_get_dev_status,
+	.get_cur_freq = rkvdec2_devfreq_get_cur_freq,
+	.is_cooling_device = true,
+};
+
+static int rkvdec2_devfreq_init(struct mpp_dev *mpp)
+{
+    struct rkvdec2_dev *dec = to_rkvdec2_dev(mpp);
+    struct device *dev = mpp->dev;
+    int ret;
+
+    /* 1. Regulator holen (vdec ist der Standard-Name im RK3588 DT) */
+    dec->vdd = devm_regulator_get_optional(dev, "vdec");
+    if (IS_ERR(dec->vdd)) {
+        if (PTR_ERR(dec->vdd) == -EPROBE_DEFER)
+            return -EPROBE_DEFER;
+        
+        dev_info(dev, "No vdec regulator found, devfreq might have limited range\n");
+        dec->vdd = NULL;
+    }
+
+    /* 2. OPP-Tabelle aus dem Device Tree laden (Mainline Way) */
+    ret = dev_pm_opp_of_add_table(dev);
+    if (ret) {
+        dev_err(dev, "Failed to add OPP table from DT\n");
+        return ret;
+    }
+
+    /* 3. Devfreq Profile vorbereiten */
+    rkvdec2_devfreq_profile.initial_freq = clk_get_rate(dec->core_clk_info.clk);
+
+    /* 4. Devfreq Device hinzufügen mit Standard-Governor */
+    dec->devfreq = devm_devfreq_add_device(dev,
+                           &rkvdec2_devfreq_profile,
+                           "simple_ondemand", /* Mainline Standard nutzen! */
+                           NULL);
+    
+    if (IS_ERR(dec->devfreq)) {
+        ret = PTR_ERR(dec->devfreq);
+        dev_err(dev, "Failed to add devfreq device: %d\n", ret);
+        goto err_opp;
+    }
+
+    /* 5. Notifier registrieren (damit Taktänderungen sauber propagiert werden) */
+    devm_devfreq_register_opp_notifier(dev, dec->devfreq);
+
+    return 0;
+
+err_opp:
+    dev_pm_opp_of_remove_table(dev);
+    return ret;
+}
+
+void mpp_devfreq_set_core_rate(struct mpp_dev *mpp, enum MPP_CLOCK_MODE mode)
+{
+	struct rkvdec2_dev *dec = to_rkvdec2_dev(mpp);
+
+	if (dec->devfreq) {
+		unsigned long core_rate_hz;
+
+		mutex_lock(&dec->devfreq->lock);
+		core_rate_hz = mpp_get_clk_info_rate_hz(&dec->core_clk_info, mode);
+		if (dec->core_rate_hz != core_rate_hz) {
+			dec->core_rate_hz = core_rate_hz;
+			update_devfreq(dec->devfreq);
+		}
+		mutex_unlock(&dec->devfreq->lock);
+	}
+
+	mpp_clk_set_rate(&dec->core_clk_info, mode);
+}
+#else
 static inline int rkvdec2_devfreq_init(struct mpp_dev *mpp)
 {
 	return 0;
@@ -654,6 +865,7 @@ void mpp_devfreq_set_core_rate(struct mpp_dev *mpp, enum MPP_CLOCK_MODE mode)
 
 	mpp_clk_set_rate(&dec->core_clk_info, mode);
 }
+#endif
 
 static int rkvdec2_init(struct mpp_dev *mpp)
 {
@@ -711,6 +923,10 @@ static int rkvdec2_init(struct mpp_dev *mpp)
 	dec->rst_hevc_cabac = mpp_reset_control_get(mpp, RST_TYPE_HEVC_CABAC, "video_hevc_cabac");
 	if (!dec->rst_hevc_cabac)
 		mpp_err("No hevc cabac reset resource define\n");
+
+	ret = rkvdec2_devfreq_init(mpp);
+	if (ret)
+		mpp_err("failed to add vdec devfreq\n");
 
 	return ret;
 }
@@ -791,76 +1007,59 @@ static int rkvdec2_set_freq(struct mpp_dev *mpp,
 	return 0;
 }
 
-static int rkvdec2_soft_reset(struct mpp_dev *mpp)
-{
-	int ret = 0;
-
-	/*
-	 * for rk3528 and rk3562
-	 * use mmu reset instead of rkvdec soft reset
-	 * rkvdec will reset together when rkvdec_mmu force reset
-	 */
-	ret = rockchip_iommu_force_reset(mpp->dev);
-	if (ret)
-		mpp_err("soft mmu reset fail, ret %d\n", ret);
-	mpp_write(mpp, RKVDEC_REG_INT_EN, 0);
-
-	return ret;
-
-}
-
 static int rkvdec2_sip_reset(struct mpp_dev *mpp)
 {
-	mpp_debug_enter();
+    mpp_debug_enter();
 
-	if (IS_REACHABLE(CONFIG_ROCKCHIP_SIP)) {
-		/* sip reset */
-		//rockchip_dmcfreq_lock();
-		//sip_smc_vpu_reset(0, 0, 0);
-		//rockchip_dmcfreq_unlock();
-	} else {
-		rkvdec2_reset(mpp);
-	}
+    /* * Im Mainline-Kernel nutzen wir den direkten Hardware-Reset.
+     * rkvdec2_reset nutzt intern meistens reset_control_assert/deassert.
+     */
+    rkvdec2_reset(mpp);
 
-	mpp_debug_leave();
+    mpp_debug_leave();
 
-	return 0;
+    return 0;
 }
 
 int rkvdec2_reset(struct mpp_dev *mpp)
 {
-	struct rkvdec2_dev *dec = to_rkvdec2_dev(mpp);
-	int ret = 0;
+    struct rkvdec2_dev *dec = to_rkvdec2_dev(mpp);
 
-	mpp_debug_enter();
+    mpp_debug_enter();
 
-	/* safe reset first*/
-	ret = rkvdec2_soft_reset(mpp);
+    /* * In Mainline nutzen wir statt mpp_safe_reset die Standard-API.
+     * Wenn dec->rst_a etc. via devm_reset_control_get geholt wurden:
+     */
+    if (dec->rst_a && dec->rst_h) {
+        mpp_debug(DEBUG_RESET, "cru reset in\n");
 
-	/* cru reset */
-	if (ret && dec->rst_a && dec->rst_h) {
-		mpp_err("soft reset timeout, use cru reset\n");
-		mpp_pmu_idle_request(mpp, true);
-		mpp_safe_reset(dec->rst_niu_a);
-		mpp_safe_reset(dec->rst_niu_h);
-		mpp_safe_reset(dec->rst_a);
-		mpp_safe_reset(dec->rst_h);
-		mpp_safe_reset(dec->rst_core);
-		mpp_safe_reset(dec->rst_cabac);
-		mpp_safe_reset(dec->rst_hevc_cabac);
-		udelay(5);
-		mpp_safe_unreset(dec->rst_niu_h);
-		mpp_safe_unreset(dec->rst_niu_a);
-		mpp_safe_unreset(dec->rst_a);
-		mpp_safe_unreset(dec->rst_h);
-		mpp_safe_unreset(dec->rst_core);
-		mpp_safe_unreset(dec->rst_cabac);
-		mpp_safe_unreset(dec->rst_hevc_cabac);
-		mpp_pmu_idle_request(mpp, false);
-	}
-	mpp_debug_leave();
+        /* PMU Idle Request entfällt oft, da runtime_pm das Management übernimmt */
 
-	return 0;
+        /* Assert all resets */
+        reset_control_assert(dec->rst_niu_a);
+        reset_control_assert(dec->rst_niu_h);
+        reset_control_assert(dec->rst_a);
+        reset_control_assert(dec->rst_h);
+        reset_control_assert(dec->rst_core);
+        reset_control_assert(dec->rst_cabac);
+        reset_control_assert(dec->rst_hevc_cabac);
+
+        fsleep(10); /* Mainline-konformes Delay */
+
+        /* Deassert all resets */
+        reset_control_deassert(dec->rst_niu_h);
+        reset_control_deassert(dec->rst_niu_a);
+        reset_control_deassert(dec->rst_a);
+        reset_control_deassert(dec->rst_h);
+        reset_control_deassert(dec->rst_core);
+        reset_control_deassert(dec->rst_cabac);
+        reset_control_deassert(dec->rst_hevc_cabac);
+
+        mpp_debug(DEBUG_RESET, "cru reset out\n");
+    }
+    mpp_debug_leave();
+
+    return 0;
 }
 
 static struct mpp_hw_ops rkvdec_v2_hw_ops = {
@@ -903,7 +1102,7 @@ static const struct mpp_dev_var rkvdec_v2_data = {
 };
 
 static const struct mpp_dev_var rkvdec_rk3588_data = {
-	.device_type = MPP_DEVICE_RKVDEC2,
+	.device_type = MPP_DEVICE_RKVDEC,
 	.hw_info = &rkvdec_v2_hw_info,
 	.trans_info = rkvdec_v2_trans,
 	.hw_ops = &rkvdec_rk3588_hw_ops,
@@ -913,7 +1112,7 @@ static const struct mpp_dev_var rkvdec_rk3588_data = {
 static const struct of_device_id mpp_rkvdec2_dt_match[] = {
 	{
 		.compatible = "rockchip,rkv-decoder-v2",
-		.data = &rkvdec_rk3588_data,
+		.data = &rkvdec_v2_data,
 	},
 	{
 		.compatible = "rockchip,rkv-decoder-v2-ccu",
@@ -994,7 +1193,7 @@ static int rkvdec2_alloc_rcbbuf(struct platform_device *pdev, struct rkvdec2_dev
     struct resource sram_res;
     struct device_node *sram_np;
     u32 rcb_size, sram_size;
-    int ret;
+	int ret;
 
     // 1. IOMMU Domain check (6.19 Way)
     domain = iommu_get_domain_for_dev(dev);
@@ -1010,12 +1209,12 @@ static int rkvdec2_alloc_rcbbuf(struct platform_device *pdev, struct rkvdec2_dev
     }
 
     // 3. SRAM finden und physikalische Adresse extrahieren
-    sram_np = of_parse_phandle(dev->of_node, "rockchip,sram", 0);
+	sram_np = of_parse_phandle(dev->of_node, "rockchip,sram", 0);
     if (!sram_np || of_address_to_resource(sram_np, 0, &sram_res)) {
         dev_err(dev, "Failed to get SRAM resource\n");
-        return -ENODEV;
-    }
-    of_node_put(sram_np);
+		return -ENODEV;
+	}
+	of_node_put(sram_np);
 
     sram_size = min_t(u32, rcb_size, resource_size(&sram_res));
     
@@ -1027,20 +1226,20 @@ static int rkvdec2_alloc_rcbbuf(struct platform_device *pdev, struct rkvdec2_dev
     
     if (dma_mapping_error(dev, dec->rcb_iova)) {
         dev_err(dev, "Failed to map SRAM via DMA-API\n");
-        return -ENOMEM;
-    }
+		return -ENOMEM;
+	}
 
     // 5. Handling des Rest-Puffers im System-RAM
-    if (sram_size < rcb_size) {
+	if (sram_size < rcb_size) {
         size_t rem_size = PAGE_ALIGN(rcb_size - sram_size);
         struct page *pages;
         dma_addr_t next_iova;
 
         pages = alloc_pages(GFP_KERNEL | __GFP_ZERO, get_order(rem_size));
         if (!pages) {
-            ret = -ENOMEM;
+			ret = -ENOMEM;
             goto err_unmap_sram;
-        }
+		}
 
         // Hier ist der Trick: Wir erzwingen das Mapping direkt hinter den SRAM
         // In 6.19 nutzen wir iommu_map, müssen aber sicherstellen, dass die IOVA
@@ -1050,111 +1249,141 @@ static int rkvdec2_alloc_rcbbuf(struct platform_device *pdev, struct rkvdec2_dev
         ret = iommu_map(domain, next_iova, page_to_phys(pages), 
                         rem_size, IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
         
-        if (ret) {
+		if (ret) {
             dev_err(dev, "Failed to stitch RAM to SRAM IOVA\n");
             __free_pages(pages, get_order(rem_size));
             goto err_unmap_sram;
-        }
+		}
         dec->rcb_page = pages;
-    }
+	}
 
-    dec->sram_size = sram_size;
-    dec->rcb_size = rcb_size;
+	dec->sram_size = sram_size;
+	dec->rcb_size = rcb_size;
     
     dev_info(dev, "RCB allocated: IOVA %pad, SRAM %u, RAM %u\n", 
             &dec->rcb_iova, sram_size, rcb_size - sram_size);
 
-    return 0;
+	return 0;
 
 err_unmap_sram:
     dma_unmap_resource(dev, dec->rcb_iova, sram_size, DMA_BIDIRECTIONAL, 0);
-    return ret;
+	return ret;
 }
+
+static const char * const rkvdec2_rst_names[] = {
+    "axi",          /* Index 0 -> rst_a */
+    "ahb",          /* Index 1 -> rst_h */
+    "core",         /* Index 2 -> rst_core */
+    "cabac",        /* Index 3 -> rst_cabac */
+    "hevc_cabac",   /* Index 4 -> rst_hevc_cabac */
+    "niu_axi",      /* Index 5 -> rst_niu_a */
+    "niu_ahb",      /* Index 6 -> rst_niu_h */
+};
 
 static int rkvdec2_core_probe(struct platform_device *pdev)
 {
-	int ret;
-	struct rkvdec2_dev *dec;
-	struct mpp_dev *mpp;
-	struct device *dev = &pdev->dev;
-	irq_handler_t irq_proc = NULL;
+    struct rkvdec2_dev *dec;
+    struct mpp_dev *mpp;
+    struct device *dev = &pdev->dev;
+    irq_handler_t irq_proc = NULL;
+    int i, ret;
 
-	dec = devm_kzalloc(dev, sizeof(*dec), GFP_KERNEL);
-	if (!dec)
-		return -ENOMEM;
+    dec = devm_kzalloc(dev, sizeof(*dec), GFP_KERNEL);
+    if (!dec)
+        return -ENOMEM;
 
-	/* attach core to ccu */
-	ret = rkvdec2_attach_ccu(dev, dec);
-	if (ret) {
-		dev_err(dev, "attach ccu failed\n");
-		return ret;
-	}
+    /* 1. Resets anfordern (Mainline-Schleife) */
+    for (i = 0; i < ARRAY_SIZE(rkvdec2_rst_names); i++) {
+        struct reset_control *rst;
+        rst = devm_reset_control_get_optional_exclusive(dev, rkvdec2_rst_names[i]);
+        if (IS_ERR(rst))
+            return dev_err_probe(dev, PTR_ERR(rst), "failed to get reset %s\n", 
+                                 rkvdec2_rst_names[i]);
+        
+        switch (i) {
+            case 0: dec->rst_a = rst; break;
+            case 1: dec->rst_h = rst; break;
+            case 2: dec->rst_core = rst; break;
+            case 3: dec->rst_cabac = rst; break;
+            case 4: dec->rst_hevc_cabac = rst; break;
+            case 5: dec->rst_niu_a = rst; break;
+            case 6: dec->rst_niu_h = rst; break;
+        }
+    }
 
-	mpp = &dec->mpp;
-	platform_set_drvdata(pdev, mpp);
-	mpp->is_irq_startup = false;
-	if (dev->of_node) {
-		struct device_node *np = pdev->dev.of_node;
-		const struct of_device_id *match;
+    /* 2. CCU Anbindung */
+    ret = rkvdec2_attach_ccu(dev, dec);
+    if (ret)
+        return dev_err_probe(dev, ret, "attach ccu failed\n");
 
-		match = of_match_node(mpp_rkvdec2_dt_match, dev->of_node);
-		if (match)
-			mpp->var = (struct mpp_dev_var *)match->data;
-		mpp->core_id = of_alias_get_id(np, "rkvdec");
-	}
+    mpp = &dec->mpp;
+    platform_set_drvdata(pdev, mpp);
+    mpp->is_irq_startup = false;
 
-	ret = mpp_dev_probe(mpp, pdev);
-	if (ret) {
-		dev_err(dev, "probe sub driver failed\n");
-		return ret;
-	}
-	dec->mmu_base = ioremap(dec->mpp.io_base + 0x600, 0x80);
-	if (!dec->mmu_base)
-		dev_err(dev, "mmu base map failed!\n");
+    if (dev->of_node) {
+        const struct of_device_id *match;
+        match = of_match_node(mpp_rkvdec2_dt_match, dev->of_node);
+        if (match)
+            mpp->var = (struct mpp_dev_var *)match->data;
+        
+        /* of_alias_get_id ist in 6.19 der Standard für Core-Indizes */
+        mpp->core_id = of_alias_get_id(dev->of_node, "rkvdec");
+        if (mpp->core_id < 0) mpp->core_id = 0; 
+    }
 
-	/* alloc rcb buffer */
-	rkvdec2_alloc_rcbbuf(pdev, dec);
+    /* 3. Basis MPP Probe */
+    ret = mpp_dev_probe(mpp, pdev);
+    if (ret)
+        return ret;
 
-	/* set device for link */
-	ret = rkvdec2_ccu_link_init(pdev, dec);
-	if (ret)
-		return ret;
+    /* 4. MMU Mapping (Nutze devm_ioremap für automatisches Cleanup!) */
+    dec->mmu_base = devm_ioremap(dev, mpp->io_base + 0x600, 0x80);
+    if (!dec->mmu_base)
+        return -ENOMEM;
 
-	mpp->dev_ops->alloc_task = rkvdec2_ccu_alloc_task;
-	if (dec->ccu->ccu_mode == RKVDEC2_CCU_TASK_SOFT) {
-		mpp->dev_ops->task_worker = rkvdec2_soft_ccu_worker;
-		irq_proc = rkvdec2_soft_ccu_irq;
-	} else if (dec->ccu->ccu_mode == RKVDEC2_CCU_TASK_HARD) {
-		if (mpp->core_id == 0 && mpp->task_capacity > 1) {
-			dec->link_dec->task_capacity = mpp->task_capacity;
-			ret = rkvdec2_ccu_alloc_table(dec, dec->link_dec);
-			if (ret)
-				return ret;
-		}
-		mpp->dev_ops->task_worker = rkvdec2_hard_ccu_worker;
-		irq_proc = rkvdec2_hard_ccu_irq;
-	}
-	mpp->fault_handler = rkvdec2_ccu_iommu_fault_handle;
-	kthread_init_work(&mpp->work, mpp->dev_ops->task_worker);
+    /* 5. RCB & Link Init */
+    rkvdec2_alloc_rcbbuf(pdev, dec);
+    ret = rkvdec2_ccu_link_init(pdev, dec);
+    if (ret)
+        return ret;
 
-	/* get irq request */
-	ret = devm_request_threaded_irq(dev, mpp->irq, irq_proc, NULL,
-					IRQF_SHARED, dev_name(dev), mpp);
-	if (ret) {
-		dev_err(dev, "register interrupter runtime failed\n");
-		return -EINVAL;
-	}
-	/*make sure mpp->irq is startup then can be en/disable*/
-	mpp->is_irq_startup = true;
+    /* 6. CCU Modus Konfiguration */
+    mpp->dev_ops->alloc_task = rkvdec2_ccu_alloc_task;
+    if (dec->ccu->ccu_mode == RKVDEC2_CCU_TASK_SOFT) {
+        mpp->dev_ops->task_worker = rkvdec2_soft_ccu_worker;
+        irq_proc = rkvdec2_soft_ccu_irq;
+        mpp->fault_handler = rkvdec2_soft_ccu_iommu_fault_handle;
+    } else if (dec->ccu->ccu_mode == RKVDEC2_CCU_TASK_HARD) {
+        if (mpp->core_id == 0 && mpp->task_capacity > 1) {
+            dec->link_dec->task_capacity = mpp->task_capacity;
+            ret = rkvdec2_ccu_alloc_table(dec, dec->link_dec);
+            if (ret) return ret;
+        }
+        mpp->dev_ops->task_worker = rkvdec2_hard_ccu_worker;
+        irq_proc = rkvdec2_hard_ccu_irq;
+        mpp->fault_handler = rkvdec2_hard_ccu_iommu_fault_handle;
+    }
+    
+    kthread_init_work(&mpp->work, mpp->dev_ops->task_worker);
 
-	mpp->session_max_buffers = RKVDEC_SESSION_MAX_BUFFERS;
-	rkvdec2_procfs_init(mpp);
+    /* 7. Threaded IRQ (Wichtig für Mainline Performance) */
+    ret = devm_request_threaded_irq(dev, mpp->irq, NULL, irq_proc,
+                                    IRQF_ONESHOT | IRQF_SHARED, 
+                                    dev_name(dev), mpp);
+    if (ret)
+        return dev_err_probe(dev, ret, "register interrupt failed\n");
 
-	/* if is main-core, register to mpp service */
-	if (mpp->core_id == 0)
-		mpp_dev_register_srv(mpp, mpp->srv);
+    mpp->is_irq_startup = true;
+    mpp->session_max_buffers = RKVDEC_SESSION_MAX_BUFFERS;
 
-	return ret;
+    /* Debug FS / Proc FS */
+    rkvdec2_procfs_init(mpp);
+
+    /* 8. Register am MPP Service (Nur für Core 0) */
+    if (mpp->core_id == 0)
+        mpp_dev_register_srv(mpp, mpp->srv);
+
+    return 0;
 }
 
 static int rkvdec2_probe_default(struct platform_device *pdev)
@@ -1163,6 +1392,7 @@ static int rkvdec2_probe_default(struct platform_device *pdev)
 	struct rkvdec2_dev *dec = NULL;
 	struct mpp_dev *mpp = NULL;
 	const struct of_device_id *match = NULL;
+	irq_handler_t irq_proc = NULL;
 	int ret = 0;
 
 	dec = devm_kzalloc(dev, sizeof(*dec), GFP_KERNEL);
@@ -1171,6 +1401,7 @@ static int rkvdec2_probe_default(struct platform_device *pdev)
 
 	mpp = &dec->mpp;
 	platform_set_drvdata(pdev, mpp);
+	mpp->is_irq_startup = false;
 
 	if (pdev->dev.of_node) {
 		match = of_match_node(mpp_rkvdec2_dt_match, pdev->dev.of_node);
@@ -1187,29 +1418,37 @@ static int rkvdec2_probe_default(struct platform_device *pdev)
 	rkvdec2_alloc_rcbbuf(pdev, dec);
 	rkvdec2_link_init(pdev, dec);
 
-	if (dec->link_dec) {
-		ret = devm_request_threaded_irq(dev, mpp->irq,
-						rkvdec2_link_irq_proc, NULL,
-						IRQF_SHARED, dev_name(dev), mpp);
+	irq_proc = mpp_dev_irq;
+	if (dec->link_dec && (mpp->task_capacity > 1)) {
+		irq_proc = rkvdec2_link_irq_proc;
 		mpp->dev_ops->process_task = rkvdec2_link_process_task;
 		mpp->dev_ops->wait_result = rkvdec2_link_wait_result;
 		mpp->dev_ops->task_worker = rkvdec2_link_worker;
 		mpp->dev_ops->deinit = rkvdec2_link_session_deinit;
 		kthread_init_work(&mpp->work, rkvdec2_link_worker);
-	} else {
-		ret = devm_request_threaded_irq(dev, mpp->irq,
-						mpp_dev_irq, mpp_dev_isr_sched,
-						IRQF_SHARED, dev_name(dev), mpp);
 	}
+
+	ret = devm_request_threaded_irq(dev, mpp->irq, irq_proc, NULL,
+					IRQF_SHARED, dev_name(dev), mpp);
 	if (ret) {
 		dev_err(dev, "register interrupter runtime failed\n");
 		return -EINVAL;
 	}
 
+	mpp->is_irq_startup = true;
 	mpp->session_max_buffers = RKVDEC_SESSION_MAX_BUFFERS;
 	rkvdec2_procfs_init(mpp);
+	if (dec->link_dec && (mpp->task_capacity > 1))
+		rkvdec2_link_procfs_init(mpp);
+
 	/* register current device to mpp service */
 	mpp_dev_register_srv(mpp, mpp->srv);
+
+	dev_info(dev, "probing finish\n");
+
+	/* work workaround */
+	if (dec->fix && mpp->hw_ops->hack_run)
+		mpp->hw_ops->hack_run(mpp);
 
 	return ret;
 }
@@ -1236,20 +1475,35 @@ static int rkvdec2_probe(struct platform_device *pdev)
 
 static int rkvdec2_free_rcbbuf(struct platform_device *pdev, struct rkvdec2_dev *dec)
 {
-	struct iommu_domain *domain;
+    struct device *dev = &pdev->dev;
+    struct iommu_domain *domain;
 
-	if (dec->rcb_page) {
-		size_t page_size = PAGE_ALIGN(dec->rcb_size - dec->sram_size);
-		int order = min(get_order(page_size), MAX_PAGE_ORDER);
+    // 1. Domain holen wie im Alloc
+    domain = iommu_get_domain_for_dev(dev);
 
-		__free_pages(dec->rcb_page, order);
-	}
-	if (dec->rcb_iova) {
-		domain = dec->mpp.iommu_info->domain;
-		iommu_unmap(domain, dec->rcb_iova, dec->rcb_size);
-	}
+    // 2. Den RAM-Teil freigeben (falls vorhanden)
+    if (dec->rcb_page) {
+        size_t rem_size = PAGE_ALIGN(dec->rcb_size - dec->sram_size);
+        dma_addr_t ram_iova = dec->rcb_iova + dec->sram_size;
 
-	return 0;
+        // Erst das IOMMU-Mapping lösen (da manuell mit iommu_map erzeugt)
+        if (domain)
+            iommu_unmap(domain, ram_iova, rem_size);
+
+        // Dann die Pages freigeben
+        __free_pages(dec->rcb_page, get_order(rem_size));
+        dec->rcb_page = NULL;
+    }
+
+    // 3. Den SRAM-Teil freigeben
+    if (dec->rcb_iova) {
+        // Da wir dma_map_resource genutzt haben, nutzen wir dma_unmap_resource
+        dma_unmap_resource(dev, dec->rcb_iova, dec->sram_size, 
+                           DMA_BIDIRECTIONAL, 0);
+        dec->rcb_iova = 0;
+    }
+
+    return 0;
 }
 
 static void rkvdec2_remove(struct platform_device *pdev)
@@ -1300,8 +1554,18 @@ static int __maybe_unused rkvdec2_runtime_suspend(struct device *dev)
 				disable_irq(mpp->iommu_info->irq);
 		}
 
+		/*
+		 * to ensure hardware is fully idle,
+		 * reset and wait for reset ready before suspend.
+		 */
+		if (mpp->hw_ops->reset)
+			mpp->hw_ops->reset(mpp);
+		mpp_iommu_refresh(mpp->iommu_info, mpp->dev);
+
 		if (mpp->hw_ops->clk_off)
 			mpp->hw_ops->clk_off(mpp);
+
+		mpp_dev_load_clear(mpp);
 	}
 
 	return 0;
@@ -1315,6 +1579,7 @@ static int __maybe_unused rkvdec2_runtime_resume(struct device *dev)
 		mpp_clk_safe_enable(ccu->aclk_info.clk);
 	} else {
 		struct mpp_dev *mpp = dev_get_drvdata(dev);
+		struct rkvdec2_dev *dec = to_rkvdec2_dev(mpp);
 
 		if (mpp->hw_ops->clk_on)
 			mpp->hw_ops->clk_on(mpp);
@@ -1325,7 +1590,9 @@ static int __maybe_unused rkvdec2_runtime_resume(struct device *dev)
 			if (mpp->iommu_info && mpp->iommu_info->got_irq)
 				enable_irq(mpp->iommu_info->irq);
 		}
-
+		/* work workaround */
+		if (dec->fix && mpp->hw_ops->hack_run)
+			mpp->hw_ops->hack_run(mpp);
 	}
 
 	return 0;

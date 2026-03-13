@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
 /*
- * Copyright (c) 2021 Rockchip Electronics Co., Ltd
+ * Copyright (c) 2021 Rockchip Electronics Co., Ltd.
  *
  * author:
  *	Herman Chen <herman.chen@rock-chips.com>
@@ -9,7 +9,6 @@
 #ifndef __ROCKCHIP_MPP_RKVDEC2_H__
 #define __ROCKCHIP_MPP_RKVDEC2_H__
 
-//#include <linux/dma-iommu.h>
 #include <linux/iopoll.h>
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
@@ -21,11 +20,12 @@
 #include <linux/notifier.h>
 #include <linux/proc_fs.h>
 #include <linux/nospec.h>
-//#include <linux/rockchip/rockchip_sip.h>
+// #include <linux/rockchip/rockchip_sip.h>
 #include <linux/regulator/consumer.h>
 
 #include <soc/rockchip/pm_domains.h>
-//#include <soc/rockchip/rockchip_sip.h>
+// #include <soc/rockchip/rockchip_opp_select.h>
+// #include <soc/rockchip/rockchip_sip.h>
 
 #include "mpp_debug.h"
 #include "mpp_common.h"
@@ -39,18 +39,12 @@
 
 #define	RKVDEC_SESSION_MAX_BUFFERS	40
 /* The maximum registers number of all the version */
-#define RKVDEC_REG_NUM			279
-#define RKVDEC_REG_HW_ID_INDEX		0
-#define RKVDEC_REG_START_INDEX		0
-#define RKVDEC_REG_END_INDEX		278
+#define RKVDEC_REG_NUM			360
 
 #define REVDEC_GET_PROD_NUM(x)		(((x) >> 16) & 0xffff)
-#define RKVDEC_REG_FORMAT_INDEX		9
 #define RKVDEC_GET_FORMAT(x)		((x) & 0x3ff)
 
 #define RKVDEC_REG_START_EN_BASE       0x28
-
-#define RKVDEC_REG_START_EN_INDEX      10
 
 #define RKVDEC_START_EN			BIT(0)
 
@@ -62,7 +56,7 @@
 #define RKVDEC_REG_RLC_BASE_INDEX	(128)
 
 #define RKVDEC_REG_INT_EN		0x380
-#define RKVDEC_REG_INT_EN_INDEX		(224)
+
 #define RKVDEC_SOFT_RESET_READY		BIT(9)
 #define RKVDEC_CABAC_END_STA		BIT(8)
 #define RKVDEC_COLMV_REF_ERR_STA	BIT(7)
@@ -73,10 +67,6 @@
 #define RKVDEC_READY_STA		BIT(2)
 #define RKVDEC_IRQ_RAW			BIT(1)
 #define RKVDEC_IRQ			BIT(0)
-#define RKVDEC_INT_ERROR_MASK		(RKVDEC_COLMV_REF_ERR_STA |\
-					RKVDEC_BUF_EMPTY_STA |\
-					RKVDEC_TIMEOUT_STA |\
-					RKVDEC_ERROR_STA)
 #define RKVDEC_PERF_WORKING_CNT		0x41c
 
 /* perf sel reference register */
@@ -93,6 +83,7 @@
 #define RKVDEC_REG_CACHE1_SIZE_BASE	0x55c
 #define RKVDEC_REG_CACHE2_SIZE_BASE	0x59c
 #define RKVDEC_REG_CLR_CACHE0_BASE	0x510
+#define RKVDEC_REG_MAX_READS		0x518
 #define RKVDEC_REG_CLR_CACHE1_BASE	0x550
 #define RKVDEC_REG_CLR_CACHE2_BASE	0x590
 
@@ -110,6 +101,7 @@ enum RKVDEC_FMT {
 	RKVDEC_FMT_H264D	= 1,
 	RKVDEC_FMT_VP9D		= 2,
 	RKVDEC_FMT_AVS2		= 3,
+	RKVDEC_FMT_AV1D		= 4,
 };
 
 #define RKVDEC_MAX_RCB_NUM		(16)
@@ -190,6 +182,16 @@ struct rkvdec2_dev {
 	struct reset_control *rst_cabac;
 	struct reset_control *rst_hevc_cabac;
 
+#ifdef CONFIG_PM_DEVFREQ
+	struct regulator *vdd;
+	struct devfreq *devfreq;
+	unsigned long volt;
+	unsigned long core_rate_hz;
+	unsigned long core_last_rate_hz;
+	struct monitor_dev_info *mdev_info;
+	struct dev_pm_opp *curr_opp;
+#endif
+
 	/* internal rcb-memory */
 	u32 sram_size;
 	u32 rcb_size;
@@ -209,12 +211,7 @@ struct rkvdec2_dev {
 	u32 task_index;
 	/* mmu info */
 	void __iomem *mmu_base;
-	u32 fault_iova;
 	u32 mmu_fault;
-	u32 mmu0_st;
-	u32 mmu1_st;
-	u32 mmu0_pta;
-	u32 mmu1_pta;
 };
 
 int mpp_set_rcbbuf(struct mpp_dev *mpp, struct mpp_session *session,
