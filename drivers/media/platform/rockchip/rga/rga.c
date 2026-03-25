@@ -405,10 +405,36 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	struct v4l2_pix_format_mplane *pix_fmt = &f->fmt.pix_mp;
 	struct rga_ctx *ctx = file_to_rga_ctx(file);
 	struct rockchip_rga *rga = ctx->rga;
+	const struct rga_hw *hw = rga->hw;
 	struct vb2_queue *vq;
 	struct rga_frame *frm;
 	int ret = 0;
 	int i;
+	struct rga_frame *limit_frm = NULL;
+
+	/* Limit before try_fmt to avoid recalculating the stride */
+	if (V4L2_TYPE_IS_OUTPUT(f->type) &&
+	    v4l2_m2m_get_dst_vq(ctx->fh.m2m_ctx)->streaming)
+		limit_frm = &ctx->out;
+	if (V4L2_TYPE_IS_CAPTURE(f->type) &&
+	    v4l2_m2m_get_src_vq(ctx->fh.m2m_ctx)->streaming)
+		limit_frm = &ctx->in;
+	if (limit_frm) {
+		const struct v4l2_frmsize_stepwise frmsize = {
+			.min_width = DIV_ROUND_UP(limit_frm->pix.width,
+						  hw->max_scaling_factor),
+			.max_width =
+				limit_frm->pix.width * hw->max_scaling_factor,
+			.min_height = DIV_ROUND_UP(limit_frm->pix.height,
+						   hw->max_scaling_factor),
+			.max_height =
+				limit_frm->pix.height * hw->max_scaling_factor,
+			.step_width = 1,
+			.step_height = 1,
+		};
+		v4l2_apply_frmsize_constraints(&pix_fmt->width,
+					       &pix_fmt->height, &frmsize);
+	}
 
 	/* Adjust all values accordingly to the hardware capabilities
 	 * and chosen format.
@@ -568,11 +594,32 @@ static int vidioc_s_selection(struct file *file, void *priv,
 	return ret;
 }
 
+static bool check_scaling(const struct rga_hw *hw, u32 src_size, u32 dst_size)
+{
+	if (src_size < dst_size)
+		return src_size * hw->max_scaling_factor >= dst_size;
+	else
+		return dst_size * hw->max_scaling_factor >= src_size;
+}
+
 static int vidioc_streamon(struct file *file, void *priv,
 			   enum v4l2_buf_type type)
 {
 	struct rga_ctx *ctx = file_to_rga_ctx(file);
 	const struct rga_hw *hw = ctx->rga->hw;
+
+	if ((V4L2_TYPE_IS_OUTPUT(type) &&
+	     v4l2_m2m_get_dst_vq(ctx->fh.m2m_ctx)->streaming) ||
+	    (V4L2_TYPE_IS_CAPTURE(type) &&
+	     v4l2_m2m_get_src_vq(ctx->fh.m2m_ctx)->streaming)) {
+		/*
+		 * As the other side is already streaming,
+		 * check that the max scaling factor isn't exceeded.
+		 */
+		if (!check_scaling(hw, ctx->in.pix.width, ctx->out.pix.width) ||
+		    !check_scaling(hw, ctx->in.pix.height, ctx->out.pix.height))
+			return -EINVAL;
+	}
 
 	hw->setup_cmdbuf(ctx);
 
