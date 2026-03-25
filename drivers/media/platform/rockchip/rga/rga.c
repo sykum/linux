@@ -568,6 +568,17 @@ static int vidioc_s_selection(struct file *file, void *priv,
 	return ret;
 }
 
+static int vidioc_streamon(struct file *file, void *priv,
+			   enum v4l2_buf_type type)
+{
+	struct rga_ctx *ctx = file_to_rga_ctx(file);
+	const struct rga_hw *hw = ctx->rga->hw;
+
+	hw->setup_cmdbuf(ctx);
+
+	return v4l2_m2m_streamon(file, ctx->fh.m2m_ctx, type);
+}
+
 static const struct v4l2_ioctl_ops rga_ioctl_ops = {
 	.vidioc_querycap = vidioc_querycap,
 
@@ -592,7 +603,7 @@ static const struct v4l2_ioctl_ops rga_ioctl_ops = {
 	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
 	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
 
-	.vidioc_streamon = v4l2_m2m_ioctl_streamon,
+	.vidioc_streamon = vidioc_streamon,
 	.vidioc_streamoff = v4l2_m2m_ioctl_streamoff,
 
 	.vidioc_g_selection = vidioc_g_selection,
