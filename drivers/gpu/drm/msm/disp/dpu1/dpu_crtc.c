@@ -1374,7 +1374,7 @@ static int dpu_crtc_reassign_planes(struct drm_crtc *crtc, struct drm_crtc_state
 }
 
 #define MAX_CHANNELS_PER_CRTC PIPES_PER_PLANE
-#define MAX_HDISPLAY_SPLIT 1080
+#define MAX_HDISPLAY_SPLIT 2560
 
 static struct msm_display_topology dpu_crtc_get_topology(
 		struct drm_crtc *crtc,
