@@ -895,6 +895,20 @@ static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
 
 	max_crtc_count = min(max_crtc_count, primary_planes_idx);
 
+	if (dpu_use_virtual_planes) {
+		for (; cursor_planes_idx < max_crtc_count && cursor_planes_idx < MAX_PLANES;
+		     cursor_planes_idx++) {
+			plane = dpu_plane_init_virtual(dev, DRM_PLANE_TYPE_CURSOR,
+						       (1UL << max_crtc_count) - 1);
+			if (IS_ERR(plane)) {
+				DPU_ERROR("dpu_plane_init failed\n");
+				ret = PTR_ERR(plane);
+				return ret;
+			}
+			cursor_planes[cursor_planes_idx] = plane;
+		}
+	}
+
 	/* Create one CRTC per encoder */
 	for (i = 0; i < max_crtc_count; i++) {
 		crtc = dpu_crtc_init(dev, primary_planes[i], cursor_planes[i]);
