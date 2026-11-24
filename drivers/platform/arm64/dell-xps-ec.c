@@ -275,6 +275,14 @@ static int dell_xps_ec_resume(struct device *dev)
 	return 0;
 }
 
+static void dell_xps_ec_shutdown(struct i2c_client *client)
+{
+	struct dell_xps_ec *ec = i2c_get_clientdata(client);
+
+	cancel_delayed_work_sync(&ec->temp_work);
+	dell_xps_ec_suspend_cmd(ec, true);
+}
+
 static const struct of_device_id dell_xps_ec_of_match[] = {
 	{ .compatible = "dell,xps13-9345-ec", .data = &dell_xps13_9345_data },
 	{}
@@ -298,6 +306,7 @@ static struct i2c_driver dell_xps_ec_driver = {
 		.pm = &dell_xps_ec_pm_ops,
 	},
 	.probe = dell_xps_ec_probe,
+	.shutdown = dell_xps_ec_shutdown,
 	.id_table = dell_xps_ec_i2c_id,
 };
 module_i2c_driver(dell_xps_ec_driver);
