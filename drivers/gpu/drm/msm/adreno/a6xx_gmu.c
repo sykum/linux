@@ -1806,30 +1806,27 @@ static int a6xx_gmu_rpmh_dep_votes_init(struct device *dev, u32 *votes,
 		return -EINVAL;
 
 	/* Fix the vote for zero frequency */
+	if (freqs_count <= 0)
+		return 0;
+
 	votes[0] = 0xffffffff;
 
 	/* Construct a vote for rest of the corners */
 	for (int i = 1; i < freqs_count; i++) {
 		unsigned int level = a6xx_gmu_get_arc_level(dev, freqs[i]);
-		u8 j, index = 0;
+		u8 index = 0;
 
-		/* Get the primary index that matches the arc level */
-		for (j = 0; j < count; j++) {
+		/*
+		 * Look for a level in the MX list that matches. If nothing
+		 * fits, use the maximum non zero vote.
+		 */
+		for (size_t j = 0; j < count; j++) {
 			if (mx[j] >= level) {
 				index = j;
 				break;
+			} else if (mx[j]) {
+				index = j;
 			}
-		}
-
-		if (j == count) {
-			DRM_DEV_ERROR(dev,
-				      "Mx Level %u not found in the RPMh list\n",
-				      level);
-			DRM_DEV_ERROR(dev, "Available levels:\n");
-			for (j = 0; j < count; j++)
-				DRM_DEV_ERROR(dev, "  %u\n", mx[j]);
-
-			return -EINVAL;
 		}
 
 		/* Construct the vote */
@@ -1867,19 +1864,30 @@ static int a6xx_gmu_rpmh_votes_init(struct a6xx_gmu *gmu)
 	/* Build the GX votes */
 	ret = a6xx_gmu_rpmh_arc_votes_init(&gpu->pdev->dev, gmu->gx_arc_votes,
 		gmu->gpu_freqs, gmu->nr_gpu_freqs, "gfx.lvl", sec_id);
+	if (ret)
+		return ret;
 
-	ret |= a6xx_gmu_rpmh_dep_votes_init(&gpu->pdev->dev, gmu->dep_arc_votes,
-		gmu->gpu_freqs, gmu->nr_gpu_freqs);
+	if (adreno_is_a8xx(adreno_gpu)) {
+		ret = a6xx_gmu_rpmh_dep_votes_init(&gpu->pdev->dev,
+			gmu->dep_arc_votes, gmu->gpu_freqs, gmu->nr_gpu_freqs);
+		if (ret)
+			return ret;
+	}
 
 	/* Build the CX votes */
-	ret |= a6xx_gmu_rpmh_arc_votes_init(gmu->dev, gmu->cx_arc_votes,
+	ret = a6xx_gmu_rpmh_arc_votes_init(gmu->dev, gmu->cx_arc_votes,
 		gmu->gmu_freqs, gmu->nr_gmu_freqs, "cx.lvl", "mx.lvl");
+	if (ret)
+		return ret;
 
 	/* Build the interconnect votes */
-	if (info->bcms && gmu->nr_gpu_bws > 1)
-		ret |= a6xx_gmu_rpmh_bw_votes_init(adreno_gpu, info, gmu);
+	if (info->bcms && gmu->nr_gpu_bws > 1) {
+		ret = a6xx_gmu_rpmh_bw_votes_init(adreno_gpu, info, gmu);
+		if (ret)
+			return ret;
+	}
 
-	return ret;
+	return 0;
 }
 
 static int a6xx_gmu_build_freq_table(struct device *dev, unsigned long *freqs,
